@@ -81,6 +81,26 @@ curl -H "Authorization: Bearer $(gcloud auth print-identity-token)" \
      "$SERVICE_URL/v1/reviews"
 ```
 
+## Deploying to a plain Docker host
+
+Cloud Run is not the only option. `infra/deploy-docker.sh` deploys to any
+Docker host — a VM, a homelab box, bare metal:
+
+```bash
+./infra/deploy-docker.sh 8090
+```
+
+It binds to `127.0.0.1` only, caps memory and CPU, and keeps the ledger in a
+named volume so history survives a container replacement. Caliper has no
+authentication of its own, so remote access belongs behind whatever reverse
+proxy or SSO the host already runs — never on a public port.
+
+With no credentials present it starts in `replay` mode, which exercises the
+whole pipeline but is a local pattern matcher, not a reviewer. `GET /healthz`
+reports which backend is live. Export `ANTHROPIC_API_KEY` before running the
+script to get real reviews, or set `CALIPER_BACKEND=vertex` with
+`CALIPER_GCP_PROJECT` to mount your ADC into the container.
+
 ## Persistence in Cloud Run
 
 The SQLite ledger lives on the container filesystem, which is ephemeral — a new
