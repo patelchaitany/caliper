@@ -21,9 +21,9 @@ jobs:
       matrix:
         python-version: ["3.11", "3.12"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v10
 
       # A virtualenv, not --system: the runner's Python is externally managed
       # (PEP 668) and rejects a system install. uv fetches the interpreter.
