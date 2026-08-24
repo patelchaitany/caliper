@@ -51,6 +51,31 @@ export CALIPER_EFFORT=high
 `CALIPER_GCP_REGION` also accepts `global` (recommended when available for your
 model), or a multi-region such as `us`.
 
+## 3b. Using Gemini instead of Claude
+
+Gemini models are first-party on Vertex, so they are usually available where
+Claude partner models are not — different enablement, different org-policy
+constraints. Caliper treats them as a peer backend:
+
+```bash
+export CALIPER_BACKEND=gemini
+export CALIPER_GCP_PROJECT=YOUR_PROJECT_ID
+export CALIPER_GCP_REGION=global
+export CALIPER_MODEL=gemini-2.5-pro
+```
+
+```bash
+caliper review src/ --backend gemini --author you@team.dev
+```
+
+`global` is the default for this backend because model availability is widest
+there. Authentication is the same ADC — nothing extra to set up.
+
+The reproducibility properties differ, and in Gemini's favour: `temperature` is
+pinned to 0 and each pass is seeded from the submission's own content hash, so
+the whole ensemble is a pure function of the input. See
+[ARCHITECTURE.md](ARCHITECTURE.md#5b-detect--providersgeminipy).
+
 ## 4. Verify the path end to end
 
 ```bash

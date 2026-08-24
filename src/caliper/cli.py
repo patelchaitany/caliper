@@ -19,6 +19,7 @@ from .models import Severity
 from .pipeline import build_submission, review_submission
 from .providers.base import Detector
 from .providers.claude import ClaudeDetector
+from .providers.gemini import GeminiDetector
 from .providers.replay import ReplayDetector
 from .scoring.rubric import DEFAULT_RUBRIC, explain_penalty
 from .store.ledger import Ledger
@@ -43,7 +44,18 @@ _SEVERITY_STYLE = {
 def _detector(backend: str, seed: str, nonce: str = "") -> Detector:
     if backend == "replay":
         return ReplayDetector(seed=seed, nonce=nonce)
+
     project = os.environ.get("CALIPER_GCP_PROJECT")
+
+    if backend == "gemini":
+        # Gemini defaults to `global`, where model availability is widest.
+        return GeminiDetector(
+            model=os.environ.get("CALIPER_MODEL", "gemini-2.5-pro"),
+            project_id=project,
+            region=os.environ.get("CALIPER_GCP_REGION", "global"),
+            seed=seed,
+        )
+
     region = os.environ.get("CALIPER_GCP_REGION", "us-central1")
     model = os.environ.get("CALIPER_MODEL", "claude-opus-5")
     effort = os.environ.get("CALIPER_EFFORT", "high")
@@ -75,7 +87,9 @@ def _band_style(value: float) -> str:
 def review(
     paths: list[str] = typer.Argument(..., help="Files or directories to review."),
     author: str = typer.Option("anonymous", "--author", "-a", help="Who wrote this."),
-    backend: str = typer.Option("vertex", "--backend", "-b", help="vertex | anthropic | replay"),
+    backend: str = typer.Option(
+        "vertex", "--backend", "-b", help="vertex | gemini | anthropic | replay"
+    ),
     passes: int = typer.Option(5, "--passes", "-k", help="Independent detection passes."),
     quorum: int | None = typer.Option(None, "--quorum", "-q", help="Votes required. Default 60%."),
     ledger_path: str = typer.Option(DEFAULT_LEDGER, "--ledger"),
@@ -191,11 +205,22 @@ def _render(report, sources: dict[str, str]) -> None:
         )
         if review.passes > 1 and not usage.cache_read_tokens and not usage.cache_write_tokens:
             # Silent no-op caching is worth surfacing: nothing errors, the bill
-            # is just several times larger than it should be.
+            # is just several times larger than it should be. The likely cause
+            # differs by backend, so do not guess at one reason for both.
+            if review.model.startswith("gemini"):
+                hint = (
+                    "Gemini 2.5 caches long prefixes implicitly; a short system "
+                    "instruction or a small submission may simply be under the "
+                    "threshold."
+                )
+            else:
+                hint = (
+                    "On Vertex this is usually an organisation policy restricting "
+                    "partner-model features."
+                )
             console.print(
-                "[yellow]Prompt caching appears inactive — nothing was written to or "
-                "read from cache across passes. On Vertex this is usually an "
-                "organisation policy restricting partner-model features.[/yellow]"
+                "[yellow]Prompt caching appears inactive — nothing was written to "
+                f"or read from cache across passes. {hint}[/yellow]"
             )
 
 

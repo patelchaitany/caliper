@@ -99,6 +99,33 @@ def test_system_prefix_is_byte_stable_across_passes():
     assert len(prefixes) == 1
 ```
 
+### 5b. Detect — `providers/gemini.py`
+
+The same stage, a different model, and a genuinely different reproducibility
+story. Gemini on Vertex exposes `temperature` and `seed`; Claude exposes
+neither, because those parameters were removed from the Messages API.
+
+| | Claude backend | Gemini backend |
+|---|---|---|
+| Sampling control | none — removed from the API | `temperature=0` |
+| Seed | not available | derived from the submission hash |
+| Structured output | `output_config.format`, falls back to forced tool use | `response_json_schema` |
+| Pass diversity | file order only | file order **and** per-pass seed |
+| Tier 2 | a measured band | collapses toward Tier 1 |
+
+**The seed must vary per pass.** The tempting move is one fixed seed for the
+run, and it would be wrong: at `temperature=0` with an identical seed, all K
+passes return the same answer, every finding trivially scores K/K votes, and
+quorum reports unanimous agreement from what was really a single sample. So the
+seed is `hash(submission_content, pass_index)` — different across passes, so
+they are independent hypotheses worth voting between; identical across runs, so
+the vote reproduces. Deterministic diversity, rather than a choice between the
+two.
+
+That both backends share the prompt, the schema, grounding, quorum and the
+rubric — differing only in how bytes reach a model — is the practical test of
+the claim that the model is a replaceable component.
+
 ### 6. Ground — `analysis/grounding.py`
 
 Every finding carries `quoted_source`. It is located in the file, or the finding

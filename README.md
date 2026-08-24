@@ -51,6 +51,18 @@ Caliper does not try. It treats every model call as **a sample**, and recovers
 determinism at the layers where it can actually be guaranteed rather than hoped
 for. That constraint is the design.
 
+Gemini *does* still expose `temperature` and `seed`, and the Gemini backend
+pins both — which tightens Tier 2 without changing anything else. That is the
+point: the architecture does not depend on the sampler being controllable. It
+exploits the control where it exists and survives where it does not.
+
+One trap worth naming, because it is easy to get backwards. At `temperature=0`,
+a single fixed seed makes all K passes identical, so every finding scores K/K
+and quorum reports unanimous agreement from what was really one sample. The
+Gemini backend seeds each pass from `hash(submission, pass_index)` — different
+within a run so the passes are genuinely independent, identical across runs so
+the vote reproduces.
+
 ---
 
 ## The architecture
@@ -240,15 +252,33 @@ caliper verify examples/decent_service --backend replay --runs 6
 caliper rubric
 ```
 
-Against Claude on Vertex AI:
+Against a real model on Vertex AI — one `gcloud auth application-default login`
+covers both:
 
 ```bash
-gcloud auth application-default login
-export CALIPER_GCP_PROJECT=your-project-id CALIPER_GCP_REGION=us-central1
-caliper review src/ --author you@team.dev
+export CALIPER_GCP_PROJECT=your-project-id
+
+# Claude
+caliper review src/ --backend vertex --author you@team.dev
+
+# Gemini (first-party on Vertex, so usually available where Claude is not)
+CALIPER_GCP_REGION=global caliper review src/ --backend gemini --author you@team.dev
 ```
 
 Full GCP setup, including Cloud Run deployment: [docs/GCP.md](docs/GCP.md).
+
+### Backends
+
+| Backend | Model | Auth |
+|---|---|---|
+| `vertex` | Claude on Vertex AI | Google ADC |
+| `gemini` | Gemini on Vertex AI | Google ADC |
+| `anthropic` | Claude, first-party API | `ANTHROPIC_API_KEY` |
+| `replay` | offline pattern matcher — tests and demos, **not a reviewer** | none |
+
+The detector is the only probabilistic component, and it is one method. Swapping
+it swaps nothing else: both real backends share the prompt, the schema,
+grounding, quorum and the rubric.
 
 ### Commands
 
@@ -317,6 +347,15 @@ Verified against live Claude on Vertex AI, not assumed:
 - **Model availability is per project and per region.** A 404 means Model
   Garden enablement, not policy; the same project can serve a model in
   `us-east5` and 404 on `us-central1`.
+- **Gemini is affected by the same org policy, differently.** On the project
+  tested, `gemini-2.5-pro` answered on both `us-central1` and `global` and
+  accepted `response_json_schema` without complaint, while `gemini-2.5-flash`
+  was blocked by policy — the constraint is per model, not per family.
+- **Grounding caught a real hallucination in the wild.** A live 3-pass Gemini
+  review reported `detector precision 96%`: one claim quoted source that was
+  not in the file and was deleted before scoring, and twenty more failed
+  quorum. That is the anti-hallucination layer doing its job against a model
+  the prompt was not originally tuned for.
 
 Details and a probe script: [docs/GCP.md](docs/GCP.md).
 
@@ -338,6 +377,7 @@ src/caliper/
   scoring/rubric.py     the pure scoring function
   providers/
     claude.py           Claude on Vertex AI / first-party
+    gemini.py           Gemini on Vertex AI
     replay.py           offline detector for tests and demos
   store/ledger.py       the SQLite ledger: cache, memory, conventions
 docs/                   architecture, reproducibility spec, GCP setup
@@ -346,7 +386,7 @@ docs/                   architecture, reproducibility spec, GCP setup
 ## Development
 
 ```bash
-pytest              # 89 tests
+pytest              # 113 tests
 ruff check src tests
 ruff format src tests
 ```

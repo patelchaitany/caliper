@@ -17,6 +17,7 @@ from .models import Review
 from .pipeline import build_submission, review_submission
 from .providers.base import Detector
 from .providers.claude import ClaudeDetector
+from .providers.gemini import GeminiDetector
 from .providers.replay import ReplayDetector
 from .scoring.rubric import DEFAULT_RUBRIC
 from .store.ledger import Ledger
@@ -42,6 +43,13 @@ def get_ledger():
 def make_detector(seed: str) -> Detector:
     if BACKEND == "replay":
         return ReplayDetector(seed=seed, nonce=os.environ.get("CALIPER_NONCE", "fixed"))
+    if BACKEND == "gemini":
+        return GeminiDetector(
+            model=os.environ.get("CALIPER_MODEL", "gemini-2.5-pro"),
+            project_id=os.environ.get("CALIPER_GCP_PROJECT"),
+            region=os.environ.get("CALIPER_GCP_REGION", "global"),
+            seed=seed,
+        )
     return ClaudeDetector(
         backend=BACKEND,
         model=os.environ.get("CALIPER_MODEL", "claude-opus-5"),
