@@ -1,0 +1,39 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install
+        run: uv pip install --system -e ".[dev]"
+
+      - name: Lint
+        run: |
+          ruff check src tests
+          ruff format --check src tests
+
+      - name: Test
+        run: pytest -q
+
+      # The offline detector means the whole pipeline is exercised in CI with
+      # no credentials and no cost.
+      - name: Smoke — review
+        run: caliper review examples/sample_submission --backend replay --author ci@caliper
+
+      - name: Smoke — reproducibility
+        run: caliper verify examples/decent_service --backend replay --runs 3
+
+      - name: Gate — a clean submission must pass its own threshold
+        run: caliper review examples/decent_service --backend replay --fail-under 80
