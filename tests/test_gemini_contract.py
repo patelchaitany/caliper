@@ -21,10 +21,18 @@ from caliper.providers.gemini import GeminiDetector
 FILES = [make_source_file(p, f"x = {i}\n") for i, p in enumerate(["a.py", "b.py", "c.py"])]
 
 VALID_ITEM = {
-    "rule": "sql_injection", "category": "security", "severity": "critical",
-    "confidence": "certain", "path": "a.py", "start_line": 1, "end_line": 1,
-    "title": "t", "explanation": "e", "remediation": "r",
-    "quoted_source": "x = 0", "convention": "",
+    "rule": "sql_injection",
+    "category": "security",
+    "severity": "critical",
+    "confidence": "certain",
+    "path": "a.py",
+    "start_line": 1,
+    "end_line": 1,
+    "title": "t",
+    "explanation": "e",
+    "remediation": "r",
+    "quoted_source": "x = 0",
+    "convention": "",
 }
 
 
