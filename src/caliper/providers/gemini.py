@@ -9,29 +9,78 @@ the Claude backend, and differs only in how the bytes reach a model.
 ## The one real difference, and it matters
 
 Gemini exposes `temperature` and `seed`. Claude does not — those parameters
-were removed from the Messages API. That difference cuts in an interesting
-direction for reproducibility:
+were removed from the Messages API. It is tempting to conclude that this hands
+Gemini a reproducibility advantage. It does not, and the measurement below is
+the reason this module documents it at such length: the obvious inference is
+wrong, and quietly acting on it would put a guarantee in the README that the
+system cannot honour.
 
-  Claude   no sampling control. Each pass is an uncontrolled sample, so cold
-           re-runs of the same submission differ, and quorum exists to bound
-           how much. Tier 2 is a measured band.
+Both backends land in the same place. Every input to every pass is a pure
+function of the submission on the Gemini path, and cold re-runs still differ,
+because the nondeterminism does not live in the sampler.
 
-  Gemini   `temperature=0` plus a seed derived from the submission's own
-           content hash. Every input to every pass is a pure function of the
-           submission, so a cold re-run should reproduce the *whole ensemble*,
-           not merely land near it. Tier 2 collapses toward Tier 1.
+## What pinning the sampler actually buys — measured, not assumed
 
-## Why the seed varies per pass, and must
+The intuition is that `temperature=0` plus a fixed seed makes the model a pure
+function. On Vertex it does not. Five calls against `gemini-2.5-pro`, identical
+prompt and config, varying only the seed:
 
-The tempting move is one fixed seed for the run. That would be wrong. With
-`temperature=0` and an identical seed, all K passes return the same answer,
-every finding trivially scores K/K votes, and quorum becomes theatre — it would
-report unanimous agreement while actually having sampled once.
+    seed 42  call 1   digest cd5fb115   3 findings
+    seed 42  call 2   digest cd5fb115   3 findings
+    seed 42  call 3   digest 43ab1365   3 findings   <- same seed, different bytes
+    seed  7           digest 43ab1365   3 findings
+    seed 99           digest cd5fb115   3 findings
 
-So the seed is `hash(submission_content, pass_index)`: different across passes,
-so the passes are genuinely independent hypotheses worth voting between; and
-identical across runs, so the vote is reproducible. Diversity and determinism
-are not in tension here as long as the diversity is itself deterministic.
+Read the digests carefully. There are exactly two distinct outputs, one seed
+produced both of them, and different seeds landed on the same ones. The seed
+does not predict which you get — so on this workload it is not merely
+best-effort, it has no observable effect at all. The variation is
+infrastructure-level (replicas, batching, reasoning-token paths), several
+layers below anything a request parameter reaches.
+
+End to end the gap is wider: three cold runs of a three-file submission scored
+90.65, 82.65 and 88.55 — an 8.00 point spread, no tighter than a backend with
+no sampling controls whatsoever. The variance concentrates at the quorum
+boundary, where 14-19 marginal candidates per run sit close enough to the
+threshold that a small perturbation flips them across.
+
+So pinning the sampler is cheap and worth doing, and it is **not** a
+reproducibility mechanism. Tier 1 — the content-addressed ledger — remains the
+only exact guarantee, and it is backend-independent by construction. This
+backend is evidence for that design rather than an exception to it.
+
+## The part that did hold, and why it matters here
+
+Every one of those five calls reported the same three rules —
+`inefficient_prefix_invalidation`, `missing_thread_safety`,
+`unenforced_cache_size_limit` — even the ones whose bytes differed. The model
+re-worded itself without changing what it found.
+
+That is precisely the level Caliper identifies findings at: a fingerprint over
+rule, symbol and whitespace-normalised span, never over the model's prose. The
+layer that varies is the layer we already discard.
+
+It also means the K passes remain genuine independent samples on this backend
+despite `temperature=0`, because the nondeterminism arrives from below rather
+than from sampling. Quorum keeps its meaning; it is voting on real variation.
+
+## Why the seed still varies per pass
+
+Given the seed demonstrably does nothing here, varying it is defensive rather
+than load-bearing — but it is the right default, and it costs nothing.
+
+If the seed were ever honoured, on another model, another region, or a future
+version, a single fixed seed at `temperature=0` would make all K passes return
+the same answer. Every finding would trivially score K/K, and quorum would
+report unanimous agreement having really sampled once. That failure is silent:
+the scores keep arriving and simply mean less than they claim.
+
+So the seed is `hash(submission_content, pass_index)` — different across passes
+so they stay independent hypotheses, identical across runs so the vote would
+reproduce. It is insurance against a parameter starting to work.
+
+The pass diversity Caliper actually relies on comes from elsewhere: the file
+ordering permutation, and the backend's own variation.
 """
 
 from __future__ import annotations

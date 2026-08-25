@@ -51,17 +51,40 @@ Caliper does not try. It treats every model call as **a sample**, and recovers
 determinism at the layers where it can actually be guaranteed rather than hoped
 for. That constraint is the design.
 
-Gemini *does* still expose `temperature` and `seed`, and the Gemini backend
-pins both — which tightens Tier 2 without changing anything else. That is the
-point: the architecture does not depend on the sampler being controllable. It
-exploits the control where it exists and survives where it does not.
+Gemini *does* still expose `temperature` and `seed`, so the obvious question is
+whether using them would have made this whole architecture unnecessary. We
+built the Gemini backend, pinned both, and measured it. It would not.
 
-One trap worth naming, because it is easy to get backwards. At `temperature=0`,
-a single fixed seed makes all K passes identical, so every finding scores K/K
-and quorum reports unanimous agreement from what was really one sample. The
-Gemini backend seeds each pass from `hash(submission, pass_index)` — different
-within a run so the passes are genuinely independent, identical across runs so
-the vote reproduces.
+Five calls to `gemini-2.5-pro` with an identical prompt and config, varying
+only the seed:
+
+| seed | output digest | findings |
+|---|---|---|
+| 42 | `cd5fb115` | 3 |
+| 42 | `cd5fb115` | 3 |
+| 42 | `43ab1365` | 3 |
+| 7 | `43ab1365` | 3 |
+| 99 | `cd5fb115` | 3 |
+
+There are two distinct outputs. One seed produced both of them, and different
+seeds landed on the same ones — so the seed does not predict which you get. On
+this workload it is not merely "best effort", it has no observable effect. The
+variation is infrastructure-level — replicas, batching, reasoning-token paths —
+several layers below anything a request parameter reaches.
+
+End to end, three cold runs of a three-file submission scored 90.65, 82.65 and
+88.55: an **8.00 point spread, no tighter than the backend with no sampling
+controls at all.**
+
+That is the case for this architecture, not against it. Reproducibility has to
+live in the ledger and the rubric, because it demonstrably cannot live in the
+request.
+
+**What did hold** is the part Caliper depends on: all five calls reported the
+same three rules, even the ones whose bytes differed. The model re-worded
+itself without changing what it found — and Caliper fingerprints findings by
+rule, symbol and normalised span, never by the model's prose. The layer that
+varies is the layer already discarded.
 
 ---
 

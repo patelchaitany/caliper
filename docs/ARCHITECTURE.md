@@ -111,7 +111,7 @@ neither, because those parameters were removed from the Messages API.
 | Seed | not available | derived from the submission hash |
 | Structured output | `output_config.format`, falls back to forced tool use | `response_json_schema` |
 | Pass diversity | file order only | file order **and** per-pass seed |
-| Tier 2 | a measured band | collapses toward Tier 1 |
+| Tier 2 | a measured band | a measured band — see below |
 
 **The seed must vary per pass.** The tempting move is one fixed seed for the
 run, and it would be wrong: at `temperature=0` with an identical seed, all K
@@ -121,6 +121,25 @@ seed is `hash(submission_content, pass_index)` — different across passes, so
 they are independent hypotheses worth voting between; identical across runs, so
 the vote reproduces. Deterministic diversity, rather than a choice between the
 two.
+
+**Pinning the sampler does not buy reproducibility, and we measured that.**
+Across five calls at identical prompt and config there were exactly two
+distinct outputs — and the seed did not predict which one arrived: one seed
+produced both, and two different seeds produced the same pair. On this workload
+`seed` has no observable effect; the variation sits below it, in replicas,
+batching and reasoning-token paths. End to end, three cold runs of a three-file
+submission spread 8.00 score points, no tighter than a backend with no sampling
+controls at all.
+
+Tier 1 stays the only exact guarantee on both backends. That is the argument
+for putting determinism in the ledger and the rubric rather than in request
+parameters — and the reason the per-pass seeding in `gemini.py` is documented
+as insurance rather than as a mechanism.
+
+What *did* hold across all five calls was the finding set: the same three rules
+every time, including from the responses whose bytes differed. Caliper
+fingerprints by rule, symbol and normalised span, never by prose, so it already
+operates at the level that stayed stable.
 
 That both backends share the prompt, the schema, grounding, quorum and the
 rubric — differing only in how bytes reach a model — is the practical test of

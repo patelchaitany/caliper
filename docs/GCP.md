@@ -71,9 +71,12 @@ caliper review src/ --backend gemini --author you@team.dev
 `global` is the default for this backend because model availability is widest
 there. Authentication is the same ADC — nothing extra to set up.
 
-The reproducibility properties differ, and in Gemini's favour: `temperature` is
-pinned to 0 and each pass is seeded from the submission's own content hash, so
-the whole ensemble is a pure function of the input. See
+This backend pins `temperature` to 0 and seeds each pass from the submission's
+own content hash. Do not expect that to make reviews reproducible. Measured on
+Vertex, five calls at identical config produced two distinct outputs with the
+seed predicting neither, and cold runs of a three-file submission still spread
+8.00 score points. Reproducibility comes from the ledger, not from request
+parameters — see
 [ARCHITECTURE.md](ARCHITECTURE.md#5b-detect--providersgeminipy).
 
 ## 4. Verify the path end to end
